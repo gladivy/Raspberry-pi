@@ -1,0 +1,132 @@
+/*
+Filename    : I2CLCD1602.c
+Description : Use the LCD display data 4 lines on 20 char per line 4 bit
+Author      : www.freenove.com
+modification: 2022/08/20 edit by Paulo Barreto
+to have the script at boot just edit sudo nano /etc/rc.local and add the line
+/[YOUR PATH]/[YOUR FILE] or if you need to output a log file 
+bash -c '/[YOUR PATH]/[YOUR FILE] > /[YOUR PATH]/[YOUR LOG FILE] 2>&1' &
+*/
+#include <stdlib.h>
+#include <stdio.h>
+#include <wiringPi.h>
+#include <wiringPiI2C.h>
+#include <pcf8574.h>
+#include <lcd.h>
+#include <time.h>
+
+int pcf8574_address = 0x27;//PCF8574T:0x27, PCF8574AT:0x3F
+#define BASE 64//BASE any number above 64
+//define the output pins of the PCF8574, which are directly connected to the LCD1602 pin.
+#define RS      BASE+0
+#define RW      BASE+1
+#define EN      BASE+2
+#define LED     BASE+3
+#define D4      BASE+4
+#define D5      BASE+5
+#define D6      BASE+6
+#define D7      BASE+7
+
+int lcdhd;//used to handle LCD
+void printCPUTemperature(){//sub function used to print CPU temperature
+    FILE *fp;
+    char str_temp[15];
+    float CPU_temp;
+    //CPU temperature data is stored in this directory.
+    fp=fopen("/sys/class/thermal/thermal_zone0/temp","r");
+    fgets(str_temp,15,fp);//read file temp
+    CPU_temp = atof(str_temp)/1000.0; //convert to Celsius degrees
+    lcdPosition(lcdhd,0,0);//set the LCD cursor position to (0,0)
+    lcdPrintf(lcdhd,"Cpu_Temp>    %.3fC",CPU_temp);//display CPU temperature on LCD
+    fclose(fp);//closes file
+}
+void printDataTime(){//used to print system time
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);//get system time
+    timeinfo = localtime(&rawtime);//convert to local time
+    lcdPosition(lcdhd,0,1);//set the LCD cursor position to (0,1)
+    lcdPrintf(lcdhd,"Sys_Time>   %02d:%02d:%02d",timeinfo->tm_hour,timeinfo->tm_min,timeinfo->tm_sec);
+    //display system time on LCD
+}
+void uptime(){//used to print system uptime from uptime file
+    FILE *uptime_file;
+    unsigned int uptime_unsorted = 0;
+    unsigned char c;
+    unsigned int DD;//days
+    unsigned int HH;//hours
+    unsigned int MM;//minutes
+    unsigned int SS;//secunds
+    uptime_file=fopen("/proc/uptime","r");//reads uptime file
+    if (NULL != uptime_file){
+        while((c=fgetc(uptime_file))!= '.'){//makes c varible of reading uptime_file varible
+            unsigned int i;
+            i = atoi(&c);
+            uptime_unsorted = (uptime_unsorted * 10) + i;
+        }
+        SS = uptime_unsorted % 60;//secunds
+        MM = uptime_unsorted / 60 % 60;//minutes
+        HH = uptime_unsorted / 60 / 60 % 24;//hours
+        DD = uptime_unsorted / 60 / 60 / 24;//days
+        lcdPosition(lcdhd,0,2);//set the LCD cursor position to (0,2)
+        lcdPrintf(lcdhd,"Sys_UpTime> %02i:%02i:%02i",HH,MM,SS);//prints time to LCD
+        lcdPosition(lcdhd,0,3);//set the LCD cursor position to (0,3)
+        lcdPrintf(lcdhd,"Sys_UpTime_Days> %3i", DD);//prints time to LCD
+        fclose(uptime_file);//closes file
+    }
+    else{
+        printf("Open file \"proc/uptime\" failed!\n");
+    }
+}
+int detectI2C(int addr){//looks for the device if not draws a erro
+    int _fd = wiringPiI2CSetup (addr);
+    if (_fd < 0){
+        printf("Error address : 0x%x \n",addr);
+        return 0 ;
+    }
+    else{
+        if(wiringPiI2CWrite(_fd,0) < 0){
+            printf("Not found device in address 0x%x \n",addr);
+            return 0;
+        }
+        else{
+            printf("Found device in address 0x%x \n",addr);
+            return 1 ;
+        }
+    }
+}
+int main(void){
+    int i;
+    wiringPiSetup();
+    if(detectI2C(0x27)){
+        pcf8574_address = 0x27;
+    }//detects if 0x27 adress LCD
+    else if(detectI2C(0x3F)){
+        pcf8574_address = 0x3F;
+    }//detect if 0x3F adress LCD
+    else{
+        printf("No correct I2C address found, \n"
+        "Please use command 'i2cdetect -y 1' to check the I2C address! \n"
+        "Program Exit. \n");//if not detect draws an erro
+        return -1;
+    }
+    pcf8574Setup(BASE,pcf8574_address);//initialize PCF8574
+    for(i=0;i<8;i++){
+        pinMode(BASE+i,OUTPUT);//set PCF8574 port to output mode
+    }
+    digitalWrite(LED,HIGH);//turn on LCD backlight
+    digitalWrite(RW,LOW);//allow writing to LCD
+    //initialize LCD and return “handle” used to handle LCD
+    lcdhd = lcdInit(4,20,4,RS,EN,D4,D5,D6,D7,0,0,0,0);
+    if(lcdhd == -1){
+        printf("lcdInit failed !");//draws and erro if the LCD doesn't initialize
+        return 1;
+    }
+    while(1){
+        printCPUTemperature();//print CPU temperature
+        printDataTime();//print system time
+        uptime();//print system uptime
+        //delay(1000);//if you want to add delay uncoment 
+    }
+    return 0;
+}
