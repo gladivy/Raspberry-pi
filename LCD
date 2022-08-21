@@ -42,11 +42,11 @@ void printCPUTemperature(){//sub function used to print CPU temperature
 }
 void printDataTime(){//used to print system time
     time_t rawtime;
-    struct tm *timeinfo;
+    struct tm *tinfo;
     time(&rawtime);//get system time
-    timeinfo = localtime(&rawtime);//convert to local time
+    tinfo = localtime(&rawtime);//convert to local time
     lcdPosition(lcdhd,0,1);//set the LCD cursor position to (0,1)
-    lcdPrintf(lcdhd,"Sys_Time>   %02d:%02d:%02d",timeinfo->tm_hour,timeinfo->tm_min,timeinfo->tm_sec);
+    lcdPrintf(lcdhd,"Sys_Time>   %02d:%02d:%02d",tinfo->tm_hour,tinfo->tm_min,tinfo->tm_sec);
     //display system time on LCD
 }
 void uptime(){//used to print system uptime from uptime file
